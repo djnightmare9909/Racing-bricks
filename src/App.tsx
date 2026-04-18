@@ -212,9 +212,26 @@ export default function App() {
           playBeep(880, 0.05); // Short sharp pass beep
         }
         
-        // Speed scaling every 50 points
-        if (game.score > 0 && Math.floor((game.score - reward) / 50) < Math.floor(game.score / 50)) {
-          game.speed = Math.min(0.8, game.speed + 0.04);
+        // Speed scaling logic
+        const prevScore = game.score - reward;
+        const currentScore = game.score;
+        let shouldLevelUp = false;
+
+        if (currentScore <= 1000) {
+          // Standard scaling every 50 points until 1000
+          if (Math.floor(prevScore / 50) < Math.floor(currentScore / 50)) {
+            game.speed += 0.04;
+            shouldLevelUp = true;
+          }
+        } else {
+          // Terminal velocity reached: scaling only every 1000 points
+          if (Math.floor(prevScore / 1000) < Math.floor(currentScore / 1000)) {
+            game.speed += 0.04;
+            shouldLevelUp = true;
+          }
+        }
+
+        if (shouldLevelUp) {
           playBeep(1200, 0.15, 'square'); // Level up beep
           addLog(`SPEED_CALIBRATION: LEVEL UP (${Math.floor(game.speed * 60)} BpS)`);
         }
