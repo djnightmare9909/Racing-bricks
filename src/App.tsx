@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Play, RefreshCw, ChevronLeft, ChevronRight, Gauge, Pause, X } from 'lucide-react';
 
@@ -34,6 +34,8 @@ interface LogEntry {
 interface Enemy {
   lane: number;
   y: number;
+  nearMissAwarded?: boolean;
+  isQuadMiss?: boolean;
 }
 
 export default function App() {
@@ -193,17 +195,52 @@ export default function App() {
 
       // Score and Remove enemy if it goes fully off screen
       if (enemy.y > 42) {
+        const bonusMultiplier = enemy.isQuadMiss ? 4 : (enemy.nearMissAwarded ? 2 : 1);
         game.enemies.splice(i, 1);
         
-        game.score += 10;
+        const reward = 10 * bonusMultiplier;
+        game.score += reward;
         setScore(game.score);
-        playBeep(880, 0.05); // Short sharp pass beep
+        
+        if (enemy.isQuadMiss) {
+          playBeep(1760, 0.15, 'square'); // Highest pitch success beep
+          addLog('!!! DEADLY GAP 4X !!! (+40)');
+        } else if (enemy.nearMissAwarded) {
+          playBeep(1320, 0.1, 'square'); // Higher pitch success beep
+          addLog('BONUS: NEAR MISS X2! (+20)');
+        } else {
+          playBeep(880, 0.05); // Short sharp pass beep
+        }
         
         // Speed scaling every 50 points
-        if (game.score > 0 && game.score % 50 === 0) {
+        if (game.score > 0 && Math.floor((game.score - reward) / 50) < Math.floor(game.score / 50)) {
           game.speed = Math.min(0.8, game.speed + 0.04);
           playBeep(1200, 0.15, 'square'); // Level up beep
           addLog(`SPEED_CALIBRATION: LEVEL UP (${Math.floor(game.speed * 60)} BpS)`);
+        }
+        continue;
+      }
+
+      // Proximity check for Near Miss (Cutting Off)
+      // Triggered when player is in the same lane and just barely ahead of the enemy's bumper
+      if (!enemy.nearMissAwarded) {
+        const dyBack = enemy.y - game.playerY; // Positive: enemy behind player
+        
+        if (enemy.lane === game.playerLane && dyBack > 3.2 && dyBack < 4.5) {
+          // Normal Near Miss detected, now check for a car IN FRONT to trigger Quad-Miss
+          const frontEnemy = game.enemies.find(e => 
+            e !== enemy && 
+            e.lane === game.playerLane && 
+            game.playerY - e.y > 3.2 && 
+            game.playerY - e.y < 5.0
+          );
+
+          if (frontEnemy) {
+            enemy.isQuadMiss = true;
+            enemy.nearMissAwarded = true; // Mark both
+          } else {
+            enemy.nearMissAwarded = true;
+          }
         }
       }
 
@@ -284,6 +321,15 @@ export default function App() {
     if (gameState === 'PLAYING') {
       game.enemies.forEach(enemy => {
         drawCar(enemy.lane, enemy.y, COLORS.enemy);
+        if (enemy.isQuadMiss) {
+          ctx.fillStyle = '#ff0000'; // Flashy red for quad miss
+          ctx.font = '900 12px monospace';
+          ctx.fillText('4X', ROAD_X_OFFSET + enemy.lane * LANE_WIDTH + 14, (enemy.y * CELL_SIZE) - 4);
+        } else if (enemy.nearMissAwarded) {
+          ctx.fillStyle = COLORS.text;
+          ctx.font = 'bold 10px monospace';
+          ctx.fillText('X2', ROAD_X_OFFSET + enemy.lane * LANE_WIDTH + 14, (enemy.y * CELL_SIZE) - 4);
+        }
       });
       drawCar(game.playerLane, game.playerY, COLORS.player);
     }
